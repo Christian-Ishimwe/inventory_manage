@@ -5,13 +5,12 @@ import bcrypt from 'bcrypt';
 import dotenv from 'dotenv';
 import jwt from 'jsonwebtoken';
 import isLoggedIn from './middleware/loggedIn';
-
+import salesRoutes from './routes/salesRoutes';
+import productRoutes from './routes/productRoutes';
 dotenv.config();
 
 const app= express();
 const PORT= process.env.PORT || 3000;
-
-
 app.use(bodyParser.json())
 
 app.get('/', (req: Request, res: Response) => {
@@ -73,6 +72,7 @@ app.post("/category", isLoggedIn, async (req: Request, res: Response) => {
     return res.status(201).json({message: "Category Create Successully", category});
 })
 
+
 app.get("/category", isLoggedIn, async (req: Request, res: Response) => {
     const categories= await prisma.category.findMany();
     if(categories.length === 0){
@@ -81,151 +81,13 @@ app.get("/category", isLoggedIn, async (req: Request, res: Response) => {
     return res.status(200).json({categories});
 })
 
+app.use("/products",isLoggedIn, productRoutes);
+app.use("/sales",isLoggedIn,salesRoutes);
 
-app.get("/products", isLoggedIn, async (req: Request, res: Response) => {
-    try{
-    // @ts-ignore
-    const userId= req.user.userId;
-    const products= await prisma.product.findMany({where: {userId:userId}});
-    if(products.length === 0){
-        return res.status(404).json({message: "No products found"});
-    }
-    return res.status(200).json({products});
-    }catch(err:any){
-        console.log(err);
-        return res.status(500).json({message: "Something went wrong"}); 
-    }
+// Error handling middleware
+app.use((req: Request, res: Response) => {
+    return res.status(404).json({message: "Route not found"});
 })
-
-app.get("/products/:id", isLoggedIn, async (req: Request, res: Response) => {
-    try{
-    // @ts-ignore
-    const userId= req.user.userId;
-    const id= req.params.id;
-    const product= await prisma.product.findFirst({where: {userId:userId, productId:id}});
-    if(!product){
-        return res.status(404).json({message: "Product not found"});
-    }
-    return res.status(200).json({product});
-    }catch(err:any){
-        console.log(err);
-        return res.status(500).json({message: "Something went wrong"}); 
-    }
-})
-
-app.delete("/products/:id", isLoggedIn, async (req: Request, res: Response) => {
-    try{
-    // @ts-ignore
-    const userId= req.user.userId;
-    const id= req.params.id;
-    const product= await prisma.product.findFirst({where: {userId:userId, productId:id}});
-    if(!product){
-        return res.status(404).json({message: "Product not found"});
-    }
-    await prisma.product.delete({where: {productId:id}});
-    return res.status(200).json({message: "Product deleted successfully"});
-    }catch(err:any){
-        console.log(err);
-        return res.status(500).json({message: "Something went wrong"}); 
-    }
-})
-
-app.patch("/products/:id", isLoggedIn, async (req: Request, res: Response) => {
-    try{
-    // @ts-ignore
-    const userId= req.user.userId;
-    const id= req.params.id;
-    const data = req.body;
-    if (data === null) {
-      return res.status(400).json({ message: 'Nothing to update' });
-    }
-    const product= await prisma.product.findFirst({where: {userId:userId, productId:id}});
-    if(!product){
-        return res.status(404).json({message: "Product not found"});
-    }
-    const updatedProduct= await prisma.product.update({where: {productId:id}, data: data});
-    return res.status(200).json({updatedProduct});
-    }catch(err:any){
-        console.log(err);
-        return res.status(500).json({message: "Something went wrong"}); 
-    }
-})
-
-app.post("/products", isLoggedIn, async (req: Request, res: Response) => {
-    try{
-    //@ts-ignore
-    const userId= req.user.userId;
-    const { name, description, price, stock, unit, categoryId, lowStock } = req.body;
-    if (!name || !price || !stock || !unit || !categoryId) {
-      return res.status(400).json({ message: 'Missing required fields' });
-    }
-    const newProduct = await prisma.product.create({
-    data: {
-        name,
-        description,
-        price,
-        stock,
-        unit,
-        categoryId,
-        lowStock,
-        userId, 
-      },
-    });
-    return res.status(201).json({newProduct});
-    }catch(err:any){
-        console.log(err);
-        return res.status(500).json({message: "Something went wrong"}); 
-
-    }
-    
-})
-
-
-app.post("/sales", isLoggedIn, async (req: Request, res: Response) => {
-    try {
-    const { productId, quantity} = req.body;
-    // @ts-ignore
-    const userId = req.user.userId;
-
-    if (!productId || !quantity) {
-      return res.status(400).json({ message: 'Missing Product Id or quantity' });
-    }
-
-    const product = await prisma.product.findUnique({
-      where: { productId, userId },
-    });
-
-    if (!product) {
-      return res.status(404).json({ message: 'Product not found' });
-    }
-    if(product.stock < quantity){
-        return res.status(400).json({message: "Not enough stock available"});
-    }
-    const totalAmount = product.price * quantity;
-
-    const newSale = await prisma.sale.create({
-      data: {
-        productId,
-        userId,
-        unitPrice: product.price,
-        quantity,
-        totalAmount,
-      },
-    });
-    await prisma.product.update({
-      where: { productId },
-      data: {
-        stock: product.stock - quantity,
-      },
-    });
-
-    res.status(201).json(newSale);
-  } catch (error) {
-    console.error('Error creating sale:', error);
-    res.status(500).json({ message: 'Failed to create sale' });
-  }
-})
-
 
 
 app.listen(PORT, () => {
